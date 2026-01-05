@@ -1,5 +1,38 @@
+# Dependencies
 node_modules
-# Keep environment variables out of version control
-.env
 
+# Environment variables (sensible data)
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist
+build
+
+# Prisma
 /generated/prisma
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Claude Code (local config - DO NOT PUSH)
+.claude
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Coverage
+coverage
+
+# Test
+.nyc_output
