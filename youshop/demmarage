@@ -1,0 +1,213 @@
+================================================================================
+                         YOUSHOP - GUIDE DE DEMARRAGE
+================================================================================
+
+================================================================================
+1. PREREQUIS
+================================================================================
+
+- Node.js v18+ (https://nodejs.org)
+- PostgreSQL v14+ (https://www.postgresql.org/download/)
+- npm ou yarn
+
+================================================================================
+2. INSTALLATION
+================================================================================
+
+# Se placer dans le dossier du projet
+cd youshop
+
+# Installer les dependances
+npm install
+
+================================================================================
+3. CONFIGURATION DE LA BASE DE DONNEES
+================================================================================
+
+a) Creer une base de donnees PostgreSQL:
+   - Ouvrir pgAdmin ou psql
+   - Executer: CREATE DATABASE youshop;
+
+b) Configurer le fichier .env:
+   Modifier DATABASE_URL avec vos identifiants:
+
+   DATABASE_URL="postgresql://VOTRE_USER:VOTRE_PASSWORD@localhost:5432/youshop?schema=public"
+
+   Exemple avec utilisateur "postgres" et mot de passe "admin123":
+   DATABASE_URL="postgresql://postgres:admin123@localhost:5432/youshop?schema=public"
+
+c) Generer le client Prisma:
+   npm run prisma:generate
+
+d) Creer les tables (migration):
+   npm run prisma:migrate
+
+e) (Optionnel) Peupler avec des donnees de test:
+   npm run prisma:seed
+
+   Cela cree:
+   - Admin: admin@youshop.com / AdminP@ss123
+   - Client: client@youshop.com / ClientP@ss123
+   - Categories et produits de demonstration
+
+================================================================================
+4. LANCEMENT DU SERVEUR
+================================================================================
+
+# Mode developpement (avec hot-reload)
+npm run start:dev
+
+# Mode production
+npm run build
+npm run start:prod
+
+Le serveur demarre sur: http://localhost:3000
+
+================================================================================
+5. DOCUMENTATION API (SWAGGER)
+================================================================================
+
+Acceder a la documentation interactive:
+http://localhost:3000/api/docs
+
+Vous pouvez tester tous les endpoints directement depuis cette interface.
+
+================================================================================
+6. ENDPOINTS PRINCIPAUX
+================================================================================
+
+AUTHENTIFICATION (Public)
+--------------------------------------------------------------------------------
+POST   /api/v1/auth/register     Creer un compte
+POST   /api/v1/auth/login        Se connecter (retourne un token JWT)
+GET    /api/v1/auth/profile      Voir son profil (authentifie)
+
+CATALOGUE (Public)
+--------------------------------------------------------------------------------
+GET    /api/v1/catalog/categories         Liste des categories
+GET    /api/v1/catalog/categories/:id     Details d'une categorie
+GET    /api/v1/catalog/products           Liste des produits (avec filtres)
+GET    /api/v1/catalog/products/:id       Details d'un produit
+
+Filtres disponibles pour /products:
+  ?page=1&limit=10              Pagination
+  ?categoryId=xxx               Filtrer par categorie
+  ?minPrice=100&maxPrice=500    Filtrer par prix
+  ?search=iphone                Recherche textuelle
+  ?sortBy=price&sortOrder=asc   Tri
+  ?inStock=true                 Produits en stock uniquement
+
+COMMANDES (Client authentifie)
+--------------------------------------------------------------------------------
+POST   /api/v1/orders              Creer une commande
+GET    /api/v1/orders/my-orders    Voir mes commandes
+GET    /api/v1/orders/my-orders/:id   Details d'une commande
+PATCH  /api/v1/orders/my-orders/:id/cancel   Annuler une commande
+
+ADMINISTRATION (Admin uniquement)
+--------------------------------------------------------------------------------
+POST   /api/v1/catalog/categories     Creer une categorie
+PUT    /api/v1/catalog/categories/:id Modifier une categorie
+DELETE /api/v1/catalog/categories/:id Supprimer une categorie
+
+POST   /api/v1/catalog/products       Creer un produit
+PUT    /api/v1/catalog/products/:id   Modifier un produit
+DELETE /api/v1/catalog/products/:id   Supprimer un produit
+
+GET    /api/v1/inventory/sku/:sku          Voir stock par SKU
+PUT    /api/v1/inventory/sku/:sku          Modifier stock
+PATCH  /api/v1/inventory/sku/:sku/adjust   Ajuster stock (+/-)
+GET    /api/v1/inventory/low-stock         Produits en stock bas
+GET    /api/v1/inventory/out-of-stock      Produits en rupture
+
+GET    /api/v1/orders                 Toutes les commandes
+GET    /api/v1/orders/:id             Details commande
+PATCH  /api/v1/orders/:id/status      Changer statut commande
+
+================================================================================
+7. EXEMPLES D'UTILISATION (curl)
+================================================================================
+
+# Inscription
+curl -X POST http://localhost:3000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"SecureP@ss123","firstName":"Jean","lastName":"Dupont"}'
+
+# Connexion
+curl -X POST http://localhost:3000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"SecureP@ss123"}'
+
+# Recuperer le token de la reponse, puis:
+
+# Voir les produits (public)
+curl http://localhost:3000/api/v1/catalog/products
+
+# Creer une commande (authentifie)
+curl -X POST http://localhost:3000/api/v1/orders \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer VOTRE_TOKEN_JWT" \
+  -d '{"items":[{"productId":"ID_PRODUIT","quantity":2}]}'
+
+================================================================================
+8. SCRIPTS DISPONIBLES
+================================================================================
+
+npm run start:dev       Demarrer en mode developpement
+npm run start:prod      Demarrer en mode production
+npm run build           Compiler le projet
+npm run test            Executer les tests unitaires
+npm run test:e2e        Executer les tests end-to-end
+npm run test:cov        Tests avec couverture de code
+npm run lint            Verifier le code (ESLint)
+npm run format          Formater le code (Prettier)
+
+npm run prisma:generate Generer le client Prisma
+npm run prisma:migrate  Executer les migrations
+npm run prisma:studio   Ouvrir l'interface Prisma Studio
+npm run prisma:seed     Peupler la base de donnees
+npm run db:reset        Reinitialiser la base de donnees
+
+================================================================================
+9. STRUCTURE DU PROJET
+================================================================================
+
+youshop/
+├── prisma/
+│   ├── schema.prisma       Schema de base de donnees
+│   └── seed.ts             Script de peuplement
+├── src/
+│   ├── auth/               Module Authentification (JWT)
+│   ├── catalog/            Module Catalogue (Produits/Categories)
+│   ├── inventory/          Module Inventaire (Stocks/SKU)
+│   ├── orders/             Module Commandes
+│   ├── common/             Utilitaires partages
+│   ├── prisma/             Service Prisma (ORM)
+│   ├── app.module.ts       Module principal
+│   └── main.ts             Point d'entree
+├── test/                   Tests E2E
+├── .env                    Variables d'environnement
+└── package.json            Dependances
+
+================================================================================
+10. RESOLUTION DE PROBLEMES
+================================================================================
+
+Erreur: "Cannot connect to database"
+-> Verifier que PostgreSQL est demarre
+-> Verifier DATABASE_URL dans .env
+
+Erreur: "Table does not exist"
+-> Executer: npm run prisma:migrate
+
+Erreur: "JWT_SECRET is not defined"
+-> Verifier que JWT_SECRET est defini dans .env
+
+Erreur: "Port 3000 already in use"
+-> Changer PORT dans .env ou arreter l'autre application
+
+Pour reinitialiser completement:
+npm run db:reset
+npm run prisma:seed
+
+================================================================================
