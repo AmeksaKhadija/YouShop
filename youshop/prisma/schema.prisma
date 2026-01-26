@@ -28,7 +28,8 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  orders Order[]
+  orders   Order[]
+  payments Payment[]
 
   @@map("users")
 }
@@ -97,10 +98,12 @@ model Inventory {
 
 enum OrderStatus {
   PENDING
+  PAYMENT_PENDING
   PAID
   SHIPPED
   DELIVERED
   CANCELLED
+  PAYMENT_FAILED
 }
 
 model Order {
@@ -118,7 +121,8 @@ model Order {
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id])
 
-  items OrderItem[]
+  items    OrderItem[]
+  payments Payment[]
 
   @@index([userId])
   @@index([status])
@@ -127,9 +131,9 @@ model Order {
 }
 
 model OrderItem {
-  id        String  @id @default(uuid())
-  quantity  Int
-  unitPrice Decimal @db.Decimal(10, 2) @map("unit_price")
+  id         String  @id @default(uuid())
+  quantity   Int
+  unitPrice  Decimal @db.Decimal(10, 2) @map("unit_price")
   totalPrice Decimal @db.Decimal(10, 2) @map("total_price")
 
   orderId   String  @map("order_id")
@@ -140,4 +144,60 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
   @@map("order_items")
+}
+
+// =====================
+// PAYMENT MODULE - Stripe
+// =====================
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+model Payment {
+  id                   String        @id @default(uuid())
+  stripeSessionId      String?       @unique @map("stripe_session_id")
+  stripePaymentIntent  String?       @unique @map("stripe_payment_intent")
+  amount               Decimal       @db.Decimal(10, 2)
+  currency             String        @default("eur")
+  status               PaymentStatus @default(PENDING)
+  idempotencyKey       String        @unique @map("idempotency_key")
+  metadata             Json?
+  errorMessage         String?       @map("error_message")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
+  completedAt          DateTime?     @map("completed_at")
+
+  orderId String @map("order_id")
+  order   Order  @relation(fields: [orderId], references: [id])
+  userId  String @map("user_id")
+  user    User   @relation(fields: [userId], references: [id])
+
+  logs PaymentLog[]
+
+  @@index([orderId])
+  @@index([userId])
+  @@index([status])
+  @@index([stripeSessionId])
+  @@map("payments")
+}
+
+model PaymentLog {
+  id        String   @id @default(uuid())
+  event     String
+  status    String
+  details   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  paymentId String  @map("payment_id")
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([createdAt])
+  @@map("payment_logs")
 }

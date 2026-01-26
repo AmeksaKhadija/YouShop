@@ -52,6 +52,10 @@ async function bootstrap() {
       ## Roles
       - **CLIENT**: Can browse catalog, create orders, view own orders
       - **ADMIN**: Full access to all resources
+
+      ## Payment
+      Stripe checkout sessions for secure payment processing.
+      Webhooks handle payment confirmations automatically.
     `,
     )
     .setVersion('1.0')
@@ -60,6 +64,8 @@ async function bootstrap() {
     .addTag('Catalog', 'Products and categories')
     .addTag('Inventory', 'Stock management')
     .addTag('Orders', 'Order management')
+    .addTag('Payment', 'Stripe payment processing')
+    .addTag('Health', 'Health check endpoints')
     .build();
 
   const document = SwaggerModule.createDocument(app, config);

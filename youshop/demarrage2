@@ -1,0 +1,393 @@
+================================================================================
+                    YOUSHOP - GUIDE DE DEMARRAGE PARTIE 2
+================================================================================
+          Paiement Stripe, WebSockets, Emails, Docker, CI/CD
+================================================================================
+
+================================================================================
+1. NOUVELLES FONCTIONNALITES
+================================================================================
+
+Cette partie 2 ajoute:
+- Integration Stripe (Checkout Sessions + Webhooks)
+- Notifications temps reel (WebSocket Socket.io)
+- Emails transactionnels (Nodemailer + templates)
+- Architecture Event-Driven
+- Docker et docker-compose
+- GitHub Actions CI/CD
+
+================================================================================
+2. CONFIGURATION STRIPE
+================================================================================
+
+a) Creer un compte Stripe (https://dashboard.stripe.com)
+
+b) Recuperer vos cles API dans Dashboard > Developers > API Keys:
+   - Cle secrete (sk_test_...)
+   - Cle publique (pk_test_...)
+
+c) Configurer le webhook dans Dashboard > Developers > Webhooks:
+   - URL: https://votre-domaine.com/api/v1/payments/webhook
+   - Evenements a ecouter:
+     * checkout.session.completed
+     * checkout.session.expired
+     * payment_intent.succeeded
+     * payment_intent.payment_failed
+
+d) Recuperer la cle secrete du webhook (whsec_...)
+
+e) Mettre a jour le fichier .env:
+
+   STRIPE_SECRET_KEY=sk_test_votre_cle_secrete
+   STRIPE_WEBHOOK_SECRET=whsec_votre_cle_webhook
+   FRONTEND_URL=http://localhost:3001
+
+================================================================================
+3. CONFIGURATION EMAIL (SMTP)
+================================================================================
+
+a) Pour Gmail, activer "Mots de passe d'application":
+   - Aller dans Compte Google > Securite > Mots de passe des applications
+   - Creer un nouveau mot de passe pour "Mail"
+
+b) Mettre a jour le fichier .env:
+
+   MAIL_HOST=smtp.gmail.com
+   MAIL_PORT=587
+   MAIL_USER=votre-email@gmail.com
+   MAIL_PASSWORD=votre-mot-de-passe-application
+   MAIL_FROM="YouShop <noreply@youshop.com>"
+
+================================================================================
+4. MISE A JOUR DE LA BASE DE DONNEES
+================================================================================
+
+# Generer le client Prisma avec les nouveaux modeles
+npm run prisma:generate
+
+# Creer la migration pour Payment et PaymentLog
+npm run prisma:migrate
+
+# (Optionnel) Reinitialiser et peupler
+npm run db:reset
+npm run prisma:seed
+
+================================================================================
+5. LANCEMENT EN MODE DEVELOPPEMENT
+================================================================================
+
+# Demarrer le serveur
+npm run start:dev
+
+Le serveur demarre sur:
+- API REST: http://localhost:3000/api/v1
+- Swagger: http://localhost:3000/api/docs
+- WebSocket: ws://localhost:3000/notifications
+- Health Check: http://localhost:3000/api/v1/health
+
+================================================================================
+6. LANCEMENT AVEC DOCKER
+================================================================================
+
+a) Mode developpement (avec Adminer pour gerer la DB):
+
+   docker-compose --profile dev up -d
+
+   Services disponibles:
+   - API: http://localhost:3000
+   - Adminer: http://localhost:8080
+   - PostgreSQL: localhost:5432
+   - Redis: localhost:6379
+
+b) Mode production:
+
+   docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+c) Arreter les conteneurs:
+
+   docker-compose down
+
+d) Voir les logs:
+
+   docker-compose logs -f api
+
+================================================================================
+7. NOUVEAUX ENDPOINTS API
+================================================================================
+
+PAIEMENT (Authentifie)
+--------------------------------------------------------------------------------
+POST   /api/v1/payments/checkout       Creer une session Stripe Checkout
+       Body: { "orderId": "uuid-de-la-commande" }
+       Response: { "sessionId": "cs_...", "url": "https://checkout.stripe.com/..." }
+
+GET    /api/v1/payments/order/:orderId  Voir le paiement d'une commande
+GET    /api/v1/payments/history         Historique de mes paiements
+
+POST   /api/v1/payments/webhook         (Interne) Webhook Stripe
+
+HEALTH CHECK (Public)
+--------------------------------------------------------------------------------
+GET    /api/v1/health                   Etat du service et de la DB
+GET    /api/v1/health/ready             Readiness probe (Kubernetes)
+GET    /api/v1/health/live              Liveness probe (Kubernetes)
+
+================================================================================
+8. FLUX DE PAIEMENT
+================================================================================
+
+1. Client cree une commande:
+   POST /api/v1/orders
+   -> Retourne orderId
+
+2. Client demande une session de paiement:
+   POST /api/v1/payments/checkout { "orderId": "..." }
+   -> Retourne URL Stripe Checkout
+
+3. Client est redirige vers Stripe pour payer
+
+4. Apres paiement, Stripe envoie un webhook:
+   POST /api/v1/payments/webhook
+   -> Met a jour le statut du paiement et de la commande
+   -> Envoie notification WebSocket
+   -> Envoie email de confirmation
+
+5. Client est redirige vers:
+   - Succes: {FRONTEND_URL}/orders/{orderId}/success
+   - Annulation: {FRONTEND_URL}/orders/{orderId}/cancel
+
+================================================================================
+9. CONNEXION WEBSOCKET
+================================================================================
+
+// Cote client (JavaScript)
+import { io } from 'socket.io-client';
+
+const socket = io('http://localhost:3000/notifications', {
+  auth: {
+    token: 'votre-jwt-token'
+  }
+});
+
+// Connexion reussie
+socket.on('connected', (data) => {
+  console.log('Connecte:', data);
+});
+
+// Ecouter les notifications de paiement
+socket.on('payment:success', (notification) => {
+  console.log('Paiement reussi:', notification);
+  // { type: 'PAYMENT_SUCCESS', title: '...', message: '...', data: {...} }
+});
+
+socket.on('payment:failed', (notification) => {
+  console.log('Paiement echoue:', notification);
+});
+
+// Ecouter les mises a jour de commande
+socket.on('order:status', (notification) => {
+  console.log('Statut commande:', notification);
+});
+
+// Pour les admins: alertes de stock
+socket.on('stock:low', (alert) => {
+  console.log('Stock bas:', alert);
+});
+
+socket.on('stock:out', (alert) => {
+  console.log('Rupture de stock:', alert);
+});
+
+================================================================================
+10. EMAILS ENVOYES
+================================================================================
+
+Les emails suivants sont envoyes automatiquement:
+
+- Bienvenue: A l'inscription d'un nouvel utilisateur
+- Confirmation de commande: Apres un paiement reussi
+- Confirmation de paiement: Details du paiement
+- Echec de paiement: Si le paiement echoue
+
+Templates HTML dans: src/notifications/mailer.service.ts
+
+================================================================================
+11. TESTS
+================================================================================
+
+# Lancer tous les tests
+npm run test
+
+# Tests avec couverture
+npm run test:cov
+
+# Tests en mode watch
+npm run test:watch
+
+# Tests E2E
+npm run test:e2e
+
+Resultats actuels: 121 tests, ~60% couverture
+
+================================================================================
+12. CI/CD GITHUB ACTIONS
+================================================================================
+
+Le workflow CI s'execute automatiquement sur:
+- Push vers main ou develop
+- Pull requests vers main ou develop
+
+Etapes:
+1. Lint (ESLint)
+2. Tests (Jest avec PostgreSQL)
+3. Build
+4. Build Docker (sur push uniquement)
+
+Fichiers:
+- .github/workflows/ci.yml
+- .github/workflows/pr-check.yml
+
+================================================================================
+13. STRUCTURE DES NOUVEAUX FICHIERS
+================================================================================
+
+youshop/
+├── .github/
+│   └── workflows/
+│       ├── ci.yml              Pipeline CI/CD
+│       └── pr-check.yml        Verification PR
+├── src/
+│   ├── events/
+│   │   ├── events.constants.ts Noms des evenements
+│   │   ├── events.types.ts     Types des evenements
+│   │   └── index.ts
+│   ├── health/
+│   │   ├── health.controller.ts Health check endpoints
+│   │   ├── health.module.ts
+│   │   └── index.ts
+│   ├── notifications/
+│   │   ├── notifications.gateway.ts  WebSocket Gateway
+│   │   ├── notifications.service.ts  Event listeners
+│   │   ├── mailer.service.ts         Service email
+│   │   ├── notifications.module.ts
+│   │   └── index.ts
+│   └── payment/
+│       ├── payment.controller.ts     Endpoints paiement
+│       ├── payment.service.ts        Logique Stripe
+│       ├── payment.module.ts
+│       ├── dto/
+│       │   └── create-checkout.dto.ts
+│       └── index.ts
+├── prisma/
+│   └── schema.prisma           + Payment, PaymentLog models
+├── Dockerfile                  Image Docker multi-stage
+├── docker-compose.yml          Dev avec PostgreSQL, Redis
+├── docker-compose.prod.yml     Override production
+├── .dockerignore
+└── .env.example                Variables d'environnement
+
+================================================================================
+14. VARIABLES D'ENVIRONNEMENT (.env)
+================================================================================
+
+# Application
+NODE_ENV=development
+PORT=3000
+
+# Database
+DATABASE_URL="postgresql://youshop:youshop_secret@localhost:5432/youshop?schema=public"
+
+# JWT
+JWT_SECRET="votre-secret-jwt-tres-long-et-securise"
+JWT_EXPIRES_IN="7d"
+
+# Stripe
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Frontend (pour redirections Stripe)
+FRONTEND_URL=http://localhost:3001
+
+# Email SMTP
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USER=votre-email@gmail.com
+MAIL_PASSWORD=votre-mot-de-passe-app
+MAIL_FROM="YouShop <noreply@youshop.com>"
+
+# Docker
+DB_USER=youshop
+DB_PASSWORD=youshop_secret
+DB_NAME=youshop
+
+================================================================================
+15. TEST STRIPE EN LOCAL
+================================================================================
+
+Pour tester les webhooks en local, utiliser Stripe CLI:
+
+a) Installer Stripe CLI:
+   https://stripe.com/docs/stripe-cli
+
+b) Se connecter:
+   stripe login
+
+c) Forwarder les webhooks vers localhost:
+   stripe listen --forward-to localhost:3000/api/v1/payments/webhook
+
+d) Copier la cle whsec_... affichee dans .env
+
+e) Tester un paiement:
+   - Creer une commande via l'API
+   - Creer une session checkout
+   - Utiliser la carte test: 4242 4242 4242 4242
+
+================================================================================
+16. RESOLUTION DE PROBLEMES
+================================================================================
+
+Erreur: "STRIPE_SECRET_KEY is not defined"
+-> Verifier que STRIPE_SECRET_KEY est dans .env
+
+Erreur: "Webhook signature verification failed"
+-> Verifier STRIPE_WEBHOOK_SECRET dans .env
+-> S'assurer que rawBody est disponible (voir main.ts)
+
+WebSocket ne se connecte pas:
+-> Verifier que le token JWT est valide
+-> Verifier le namespace /notifications
+
+Emails non envoyes:
+-> Verifier MAIL_USER et MAIL_PASSWORD
+-> Pour Gmail, utiliser un mot de passe d'application
+
+Docker build echoue:
+-> Verifier que prisma generate fonctionne
+-> Nettoyer: docker system prune -a
+
+================================================================================
+17. COMMANDES UTILES
+================================================================================
+
+# Developpement
+npm run start:dev           Demarrer avec hot-reload
+npm run build               Compiler le projet
+npm run lint                Verifier le code
+
+# Tests
+npm run test                Tests unitaires
+npm run test:cov            Tests avec couverture
+npm run test:e2e            Tests end-to-end
+
+# Base de donnees
+npm run prisma:generate     Generer le client
+npm run prisma:migrate      Appliquer les migrations
+npm run prisma:studio       Interface visuelle DB
+npm run db:reset            Reinitialiser la DB
+
+# Docker
+docker-compose up -d        Demarrer les services
+docker-compose down         Arreter les services
+docker-compose logs -f      Voir les logs
+
+================================================================================

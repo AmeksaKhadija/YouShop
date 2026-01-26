@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  youshop-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: youshop-frontend
+    ports:
+      - "3001:3001"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3000/api/v1
+      - NEXT_PUBLIC_WS_URL=http://localhost:3000
+      - NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY}
+    depends_on:
+      - youshop-backend
+    networks:
+      - youshop-network
+    restart: unless-stopped
+
+  youshop-backend:
+    build:
+      context: ../youshop
+      dockerfile: Dockerfile
+    container_name: youshop-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://youshop:youshop_secret@postgres:5432/youshop
+      - JWT_SECRET=${JWT_SECRET}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - FRONTEND_URL=http://localhost:3001
+    depends_on:
+      - postgres
+    networks:
+      - youshop-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: youshop-postgres
+    environment:
+      - POSTGRES_USER=youshop
+      - POSTGRES_PASSWORD=youshop_secret
+      - POSTGRES_DB=youshop
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - youshop-network
+    restart: unless-stopped
+
+networks:
+  youshop-network:
+    driver: bridge
+
+volumes:
+  postgres_data:

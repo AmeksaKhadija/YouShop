@@ -1,0 +1,66 @@
+# =====================================
+# YOUSHOP - PULL REQUEST CHECKS
+# =====================================
+# Runs on: Pull requests only
+# Quick checks for PRs
+# =====================================
+
+name: PR Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  # ===================================
+  # QUICK CHECKS
+  # ===================================
+  quick-check:
+    name: Quick Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+          cache-dependency-path: youshop/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./youshop
+        run: npm ci
+
+      - name: Run lint
+        working-directory: ./youshop
+        run: npm run lint
+
+      - name: Check TypeScript
+        working-directory: ./youshop
+        run: npx tsc --noEmit
+
+  # ===================================
+  # PR SIZE CHECK
+  # ===================================
+  pr-size:
+    name: PR Size Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check PR size
+        uses: codelytv/pr-size-labeler@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          xs_label: 'size/xs'
+          xs_max_size: 10
+          s_label: 'size/s'
+          s_max_size: 100
+          m_label: 'size/m'
+          m_max_size: 500
+          l_label: 'size/l'
+          l_max_size: 1000
+          xl_label: 'size/xl'
+          fail_if_xl: false

@@ -1,0 +1,123 @@
+# =====================================
+# YOUSHOP - DOCKER COMPOSE
+# =====================================
+# Usage:
+#   Development: docker-compose up -d
+#   Production:  docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# =====================================
+
+version: '3.8'
+
+services:
+  # ===================================
+  # POSTGRESQL DATABASE
+  # ===================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: youshop-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-youshop}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-youshop_secret}
+      POSTGRES_DB: ${DB_NAME:-youshop}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-youshop} -d ${DB_NAME:-youshop}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - youshop-network
+
+  # ===================================
+  # REDIS (Cache & Sessions)
+  # ===================================
+  redis:
+    image: redis:7-alpine
+    container_name: youshop-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - youshop-network
+
+  # ===================================
+  # YOUSHOP API
+  # ===================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: youshop-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      DATABASE_URL: postgresql://${DB_USER:-youshop}:${DB_PASSWORD:-youshop_secret}@postgres:5432/${DB_NAME:-youshop}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USER: ${MAIL_USER}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_FROM: ${MAIL_FROM:-noreply@youshop.com}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    volumes:
+      # Mount for development hot-reload (comment in production)
+      - ./src:/app/src:ro
+      - ./prisma:/app/prisma:ro
+    networks:
+      - youshop-network
+
+  # ===================================
+  # ADMINER (Database Management UI)
+  # ===================================
+  adminer:
+    image: adminer:latest
+    container_name: youshop-adminer
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    networks:
+      - youshop-network
+    profiles:
+      - dev
+
+# ===================================
+# NETWORKS
+# ===================================
+networks:
+  youshop-network:
+    driver: bridge
+
+# ===================================
+# VOLUMES
+# ===================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
